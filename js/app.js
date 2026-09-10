@@ -155,6 +155,21 @@ function toIndex(values) {
   return values.map((v) => (v == null ? null : (v / base) * 100));
 }
 
+function pctChange(values, lag) {
+  return values.map((v, i) => {
+    const prev = values[i - lag];
+    if (
+      v == null ||
+      prev == null ||
+      !isFinite(v) ||
+      !isFinite(prev) ||
+      prev === 0
+    )
+      return null;
+    return (v / prev - 1) * 100;
+  });
+}
+
 function buildSeries() {
   const d = state.data;
   const startYear = el("start-year").value;
@@ -165,33 +180,60 @@ function buildSeries() {
   const yMode = el("y-mode").value;
   const smoothing = el("smoothing").value;
 
-  const datasets = [];
+  const rows = [];
   for (const key of Object.keys(d.regions)) {
     if (!state.selected.has(key)) continue;
     const r = d.regions[key];
-    let values = r.values.slice(from);
+    // 前月比・前年同月比は過去の月が必要なので、フル系列で変換してから切り出す
+    let values = r.values.slice();
     if (smoothing === "ma12") values = movingAverage(values);
+    if (yMode === "mom") values = pctChange(values, 1);
+    else if (yMode === "yoy") values = pctChange(values, 12);
+    values = values.slice(from);
     if (yMode === "index") values = toIndex(values);
-    datasets.push({
+    rows.push({
+      key,
       label: r.label_ja || key,
-      data: values,
-      borderColor: state.colors.get(key),
-      backgroundColor: state.colors.get(key),
-      borderWidth: 2,
-      pointRadius: 0,
-      pointHoverRadius: 4,
-      tension: 0.15,
-      spanGaps: false,
+      color: state.colors.get(key),
+      values,
     });
   }
-  return { months, datasets, yMode };
+  return { months, rows, yMode };
+}
+
+function yAxisTitle(yMode) {
+  return (
+    {
+      index: "指数（表示開始月 = 100）",
+      mom: "前月比（%）",
+      yoy: "前年同月比（%）",
+      log: "光量の合計（対数目盛）",
+    }[yMode] || "光量の合計 (Sum of Lights)"
+  );
+}
+
+function isPercentMode(yMode) {
+  return yMode === "mom" || yMode === "yoy";
 }
 
 /* ---- 描画 ---- */
 
 function update() {
   syncCheckboxes();
-  const { months, datasets, yMode } = buildSeries();
+  const { months, rows, yMode } = buildSeries();
+  const pct = isPercentMode(yMode);
+
+  const datasets = rows.map((r) => ({
+    label: r.label,
+    data: r.values,
+    borderColor: r.color,
+    backgroundColor: r.color,
+    borderWidth: 2,
+    pointRadius: 0,
+    pointHoverRadius: 4,
+    tension: 0.15,
+    spanGaps: false,
+  }));
 
   const cfg = {
     type: "line",
@@ -205,9 +247,7 @@ function update() {
         tooltip: {
           callbacks: {
             label: (c) =>
-              `${c.dataset.label}: ${
-                c.parsed.y == null ? "—" : fmt(c.parsed.y)
-              }`,
+              `${c.dataset.label}: ${fmtVal(c.parsed.y, yMode)}`,
           },
         },
       },
@@ -218,12 +258,15 @@ function update() {
         },
         y: {
           type: yMode === "log" ? "logarithmic" : "linear",
-          title: {
-            display: true,
-            text:
-              yMode === "index"
-                ? "指数（最初の月 = 100）"
-                : "光量の合計 (Sum of Lights)",
+          title: { display: true, text: yAxisTitle(yMode) },
+          grid: {
+            color: (ctx) =>
+              pct && ctx.tick.value === 0
+                ? "rgba(0,0,0,0.45)"
+                : "rgba(0,0,0,0.08)",
+          },
+          ticks: {
+            callback: (v) => (pct ? v + "%" : v),
           },
         },
       },
@@ -240,40 +283,46 @@ function update() {
   }
 
   renderMetricNote(yMode);
-  renderTable(months);
+  renderTable(months, rows, yMode);
 }
 
 function renderMetricNote(yMode) {
   const m = state.data.meta || {};
   const parts = [];
-  if (m.unit) parts.push("単位: " + m.unit);
-  if (m.scale_m) parts.push("集計解像度: " + m.scale_m + "m");
-  if (yMode === "index")
-    parts.push("各系列を最初の有効な月で正規化しています");
+  if (yMode === "yoy") {
+    parts.push(
+      "前年同月比 =（今月 − 12ヶ月前）÷ 12ヶ月前。季節変動を打ち消して伸び率を見られます"
+    );
+  } else if (yMode === "mom") {
+    parts.push(
+      "前月比 =（今月 − 前月）÷ 前月。高緯度の夏は欠測のため大きく振れます（前年同月比の方が安定）"
+    );
+  } else {
+    if (m.unit) parts.push("単位: " + m.unit);
+    if (m.scale_m) parts.push("集計解像度: " + m.scale_m + "m");
+    if (yMode === "index")
+      parts.push("各系列を表示開始月（開始年の最初の有効月）で正規化しています");
+  }
   el("metric-note").textContent = parts.join(" ／ ");
 }
 
-function renderTable(months) {
-  const d = state.data;
-  const keys = Object.keys(d.regions).filter((k) => state.selected.has(k));
+function renderTable(months, rows, yMode) {
   const table = el("data-table");
-  if (!keys.length) {
+  if (!rows.length) {
     table.innerHTML =
       "<tbody><tr><td>地域を選択してください</td></tr></tbody>";
     return;
   }
-  const from = d.months.length - months.length;
   let head = "<thead><tr><th>月</th>";
-  for (const k of keys) head += `<th>${d.regions[k].label_ja || k}</th>`;
+  for (const r of rows) head += `<th>${r.label}</th>`;
   head += "</tr></thead>";
 
   let body = "<tbody>";
   // 直近が上に来るよう逆順
   for (let i = months.length - 1; i >= 0; i--) {
     body += `<tr><td>${months[i]}</td>`;
-    for (const k of keys) {
-      const v = d.regions[k].values[from + i];
-      body += `<td>${v == null ? "—" : fmt(v)}</td>`;
+    for (const r of rows) {
+      body += `<td>${fmtVal(r.values[i], yMode)}</td>`;
     }
     body += "</tr>";
   }
@@ -299,6 +348,13 @@ function fmt(v) {
   if (a >= 1e6) return (v / 1e6).toFixed(2) + "M";
   if (a >= 1e3) return (v / 1e3).toFixed(1) + "k";
   return v.toFixed(a < 10 ? 2 : 1);
+}
+
+function fmtVal(v, yMode) {
+  if (v == null || !isFinite(v)) return "—";
+  if (isPercentMode(yMode))
+    return (v >= 0 ? "+" : "") + v.toFixed(1) + "%";
+  return fmt(v);
 }
 
 function downloadCsv() {

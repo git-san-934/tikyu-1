@@ -41,7 +41,9 @@
         <span>縦軸</span>
         <select id="y-mode">
           <option value="linear">実数（光量の合計）</option>
-          <option value="index">指数（最初の月 = 100）</option>
+          <option value="index">指数（表示開始月 = 100）</option>
+          <option value="yoy">前年同月比（%）</option>
+          <option value="mom">前月比（%）</option>
           <option value="log">対数目盛</option>
         </select>
       </label>
@@ -80,7 +82,8 @@
     <h2>データの読み方・注意点</h2>
     <ul>
       <li><strong>指標</strong>：各地域の範囲内にある画素の放射輝度（明るさ）を合計した値「Sum of Lights (SOL)」です。人口・経済活動・電化の広がりと相関するとされます。</li>
-      <li><strong>高緯度の夏はデータが欠けます</strong>：白夜に近い時期は夜間観測ができないため、ヨーロッパ・アジア・北アメリカなどの大陸合計は毎年夏に大きく落ち込みます。傾向を見るときは「12ヶ月移動平均」を使ってください。</li>
+      <li><strong>高緯度の夏はデータが欠けます</strong>：白夜に近い時期は夜間観測ができないため、ヨーロッパ・アジア・北アメリカなどの大陸合計は毎年夏に大きく落ち込みます。傾向を見るときは縦軸を「前年同月比（%）」にするか「12ヶ月移動平均」を使ってください。</li>
+      <li><strong>前年同月比（%）</strong>：同じ月どうしで比べるので季節変動や夏の欠測の影響を受けにくく、「今どのくらいのペースで増減しているか」を読むのに向いています。前月比は単月ノイズが大きいので参考程度に。</li>
       <li><strong>月ごとのばらつき</strong>：月明かり・オーロラ・山火事・雪面の反射などノイズ要因があります。単月の増減より年単位の傾向を重視してください。</li>
       <li><strong>絶対値の比較</strong>：SOL は集計解像度（既定 500m）に依存します。地域間の「相対的な伸び」を見るには「指数」表示が便利です。</li>
       <li><strong>出典</strong>：<a href="https://developers.google.com/earth-engine/datasets/catalog/NOAA_VIIRS_DNB_MONTHLY_V1_VCMSLCFG">NOAA/VIIRS/DNB/MONTHLY_V1/VCMSLCFG</a>（Earth Observation Group, Colorado School of Mines）。集計は Google Earth Engine。</li>
