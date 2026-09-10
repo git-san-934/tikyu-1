@@ -1,0 +1,153 @@
+:root {
+  --bg: #f6f7f9;
+  --panel: #ffffff;
+  --ink: #1d2733;
+  --muted: #5b6672;
+  --line: #e3e7ec;
+  --accent: #1f6feb;
+  --warn-bg: #fff7e6;
+  --warn-ink: #8a5a00;
+  --error-bg: #fdecec;
+  --error-ink: #a1231d;
+  --radius: 12px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: system-ui, -apple-system, "Segoe UI", "Hiragino Kaku Gothic ProN",
+    "Noto Sans JP", Meiryo, sans-serif;
+  line-height: 1.65;
+}
+
+.wrap {
+  max-width: 960px;
+  margin: 0 auto;
+  padding-inline: 16px;
+}
+
+.site-header {
+  background: linear-gradient(180deg, #0b1f3a, #0b1f3a 60%, #10294a);
+  color: #eef3fb;
+  padding-block: 28px 22px;
+}
+.site-header h1 { margin: 0 0 6px; font-size: 1.6rem; }
+.site-header .lead { margin: 0; color: #c6d4e8; }
+.site-header .lead strong { color: #fff; }
+.portal-back { margin: 12px 0 0; }
+.portal-back a { color: #9ec1f0; text-decoration: none; font-size: .9rem; }
+.portal-back a:hover { text-decoration: underline; }
+
+main.wrap { padding-block: 20px 48px; }
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 18px;
+  margin-bottom: 16px;
+}
+.panel h2 { margin: 0 0 12px; font-size: 1.05rem; }
+
+.banner {
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  margin-bottom: 16px;
+  font-size: .92rem;
+}
+.banner-warn { background: var(--warn-bg); color: var(--warn-ink); border: 1px solid #f0dcae; }
+.banner-error { background: var(--error-bg); color: var(--error-ink); border: 1px solid #f1c2be; }
+.banner a { color: inherit; }
+
+.controls { display: grid; grid-template-columns: 1.3fr 1fr; gap: 24px; }
+.control-group h2 { display: flex; align-items: center; justify-content: space-between; }
+
+.region-actions { margin-bottom: 8px; }
+.region-actions button,
+.table-head button,
+#btn-csv {
+  font: inherit;
+  background: #eef2f7;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 4px 10px;
+  cursor: pointer;
+  color: var(--ink);
+}
+.region-actions button:hover,
+.table-head button:hover { background: #e2e8f0; }
+
+#region-list { display: flex; flex-direction: column; gap: 2px; }
+.region-subhead {
+  font-size: .78rem;
+  color: var(--muted);
+  margin: 10px 0 2px;
+  letter-spacing: .04em;
+}
+.region-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 4px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.region-item:hover { background: #f2f5f9; }
+.region-item input { accent-color: var(--accent); }
+.swatch {
+  width: 12px; height: 12px; border-radius: 3px; flex: none;
+  border: 1px solid rgba(0,0,0,.15);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+  font-size: .9rem;
+  color: var(--muted);
+}
+.field select {
+  font: inherit;
+  color: var(--ink);
+  padding: 7px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.chart-panel { padding-bottom: 10px; }
+.metric-note { margin: 6px 2px 2px; font-size: .82rem; color: var(--muted); }
+
+.table-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.table-head h2 { margin: 0; }
+.table-scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: .82rem; }
+th, td { border: 1px solid var(--line); padding: 5px 8px; text-align: right; white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; position: sticky; left: 0; background: var(--panel); }
+thead th { background: #f0f3f7; position: sticky; top: 0; }
+
+.notes ul, #howto ol { margin: 0; padding-left: 1.25em; }
+.notes li, #howto li { margin-bottom: 8px; font-size: .92rem; }
+.notes a, #howto a { color: var(--accent); }
+code {
+  background: #eef2f7;
+  padding: 1px 5px;
+  border-radius: 5px;
+  font-size: .88em;
+}
+
+.site-footer {
+  border-top: 1px solid var(--line);
+  padding-block: 20px 40px;
+  color: var(--muted);
+  font-size: .82rem;
+}
+.site-footer p { margin: 4px 0; }
+
+@media (max-width: 720px) {
+  .controls { grid-template-columns: 1fr; gap: 18px; }
+}
