@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""GEE が書き出した viirs_sol_monthly.csv を data/nightlights.json に変換する。
+"""GEE が書き出した CSV を data/nightlights.json に変換する。
 
 使い方:
-    python scripts/build_data.py scripts/viirs_sol_monthly.csv
+    python scripts/build_data.py scripts/                  # フォルダ内の viirs_sol_*.csv を全部
+    python scripts/build_data.py scripts/viirs_sol_2012.csv ...   # ファイルを個別指定
 
 CSV の列: month(YYYY-MM), region, rtype(world|country|continent), sol
 標準ライブラリのみ。追加インストール不要。
@@ -50,36 +51,50 @@ def month_range(first: str, last: str) -> list[str]:
 
 
 def main(argv: list[str]) -> int:
-    if len(argv) != 2:
+    if len(argv) < 2:
         print(__doc__)
         return 1
-    src = Path(argv[1])
-    if not src.exists():
-        print(f"見つかりません: {src}")
+
+    csv_files: list[Path] = []
+    for arg in argv[1:]:
+        p = Path(arg)
+        if not p.exists():
+            print(f"見つかりません: {p}")
+            return 1
+        if p.is_dir():
+            csv_files += sorted(p.glob("viirs_sol_*.csv"))
+        else:
+            csv_files.append(p)
+
+    if not csv_files:
+        print("viirs_sol_*.csv が見つかりません。")
         return 1
 
     raw: dict[str, dict[str, float]] = {}
     months_seen: set[str] = set()
     rtypes: dict[str, str] = {}
 
-    with src.open(newline="", encoding="utf-8-sig") as fh:
-        for row in csv.DictReader(fh):
-            region = (row.get("region") or "").strip()
-            month = (row.get("month") or "").strip()
-            if not region or len(month) != 7:
-                continue
-            val = (row.get("sol") or "").strip()
-            months_seen.add(month)
-            rtypes[region] = (row.get("rtype") or "").strip() or "country"
-            if val not in ("", "null", "None"):
-                try:
-                    raw.setdefault(region, {})[month] = float(val)
-                except ValueError:
-                    pass
+    for src in csv_files:
+        with src.open(newline="", encoding="utf-8-sig") as fh:
+            for row in csv.DictReader(fh):
+                region = (row.get("region") or "").strip()
+                month = (row.get("month") or "").strip()
+                if not region or len(month) != 7:
+                    continue
+                val = (row.get("sol") or "").strip()
+                months_seen.add(month)
+                rtypes[region] = (row.get("rtype") or "").strip() or "country"
+                if val not in ("", "null", "None"):
+                    try:
+                        raw.setdefault(region, {})[month] = float(val)
+                    except ValueError:
+                        pass
 
     if not months_seen:
         print("有効な行がありません。CSV の中身を確認してください。")
         return 1
+
+    print(f"読み込んだ CSV: {len(csv_files)} 個")
 
     months = month_range(min(months_seen), max(months_seen))
 
