@@ -1,25 +1,24 @@
-// VIIRS 夜間光 - 月ごとに1タスクずつ Sum of Lights を書き出す (安全重視版)
-// これまでの「年ごとにまとめて処理」はメモリ不足になったり、
-// 効率化しようとした版は逆に暴走して無料枠を大量消費したため、
-// 一番シンプルで軽い「1ヶ月 = 1タスク」に戻す。
+// VIIRS 夜間光 - 月ごとに1タスクずつ Sum of Lights を書き出す (World分離版)
+// 「地球全体(World)」を他の国・大陸と同じ reduceRegions に混ぜると、
+// 1ヶ月分でもコストが際限なく膨らむことが分かったため、
+// World だけ完全に別の・粗い解像度の単純計算に分離した。
 //
 // 使い方:
 //   1. この内容を Earth Engine Code Editor に全部貼って Run
-//      (少し時間がかかります。Console に「タスク数: 150」のように出ます)
-//   2. 右の Tasks タブで「RUN ALL」を押す
-//      -> viirs_sol_2012_04, viirs_sol_2012_05, ... という
-//         月別 CSV が Google ドライブの earthengine フォルダに出ます
-//      (タスクが多いので終わるまで時間がかかりますが、1つ1つは軽いです)
-//   3. Google ドライブで earthengine フォルダを開き、中身を全選択して
-//      右クリック→ダウンロード（ZIPでまとめて落ちます）。展開する。
-//   4. 展開したフォルダの CSV を scripts/ に置き、
+//   2. まずは TEST_LIMIT (下の設定) を小さいままにして、
+//      Tasks タブで数個だけ RUN してみる。数分で緑チェックになればOK。
+//   3. 問題なければ TEST_LIMIT を 0 にして Run し直し、RUN ALL で全部流す。
+//   4. Google ドライブの earthengine フォルダを全選択→ダウンロード(ZIP)。
+//   5. 展開した CSV を scripts/ に置き、
 //      python scripts/build_data.py scripts/
 
 var START = '2012-04-01';
 var END = ee.Date(Date.now()).format('YYYY-MM-dd').getInfo();
-var SCALE = 1000;
+var SCALE = 1000;        // 国・大陸の解像度(m)
+var SCALE_WORLD = 8000;  // 地球全体は総量だけなので粗くてよい
 var MIN_RAD = 0.0;
 var DRIVE_FOLDER = 'earthengine';
+var TEST_LIMIT = 3;      // 最初のテスト用。動作確認できたら 0 にして全月実行
 
 var col = ee.ImageCollection('NOAA/VIIRS/DNB/MONTHLY_V1/VCMSLCFG')
   .filterDate(START, END);
@@ -52,30 +51,32 @@ continents['North America'] = ['North America', 'Central America', 'Caribbean'];
 continents['South America'] = ['South America'];
 continents['Oceania'] = ['Oceania', 'Australia'];
 
+// regions には World を含めない（国・大陸のみ）
 var feats = [];
-feats.push(ee.Feature(ee.Geometry.BBox(-180, -65, 180, 75),
-                      {region: 'World', rtype: 'world'}));
-
 Object.keys(countries).forEach(function (label) {
   var g = lsib.filter(ee.Filter.eq('country_na', countries[label])).geometry();
   feats.push(ee.Feature(g.simplify(SCALE), {region: label, rtype: 'country'}));
 });
-
 Object.keys(continents).forEach(function (label) {
   var g = lsib.filter(ee.Filter.inList('wld_rgn', continents[label])).geometry();
   feats.push(ee.Feature(g.simplify(SCALE), {region: label, rtype: 'continent'}));
 });
-
 var regions = ee.FeatureCollection(feats);
 
-// 月ごとの画像IDを先に一覧化 (クライアント側で151個ほどのリストを作るだけ)
+var worldGeom = ee.Geometry.BBox(-180, -65, 180, 75);
+
+// 月ごとの画像IDを先に一覧化
 var ids = col.aggregate_array('system:index').getInfo();
+if (TEST_LIMIT > 0) {
+  ids = ids.slice(0, TEST_LIMIT);
+}
 print('タスク数: ' + ids.length);
 
 ids.forEach(function (id) {
   var ym = id.slice(0, 4) + '-' + id.slice(4, 6);
   var img = clean(ee.Image(col.filter(ee.Filter.eq('system:index', id)).first()));
 
+  // 国・大陸: reduceRegions
   var fc = img.reduceRegions({
     collection: regions,
     reducer: ee.Reducer.sum().setOutputs(['sol']),
@@ -91,8 +92,22 @@ ids.forEach(function (id) {
     });
   });
 
+  // World: 別枠・粗い解像度の単純合計
+  var worldVal = img.reduceRegion({
+    reducer: ee.Reducer.sum(),
+    geometry: worldGeom,
+    scale: SCALE_WORLD,
+    maxPixels: 1e13,
+    tileScale: 16
+  }).get('avg_rad');
+  var worldFeat = ee.Feature(null, {
+    month: ym, region: 'World', rtype: 'world', sol: worldVal
+  });
+
+  var out = fc.merge(ee.FeatureCollection([worldFeat]));
+
   Export.table.toDrive({
-    collection: fc,
+    collection: out,
     description: 'viirs_sol_' + ym.replace('-', '_'),
     folder: DRIVE_FOLDER,
     fileFormat: 'CSV',
