@@ -1,30 +1,33 @@
-// VIIRS 夜間光 - 年ごとに分割して月次 Sum of Lights を書き出す (効率化版)
+// VIIRS 夜間光 - 月ごとに1タスクずつ Sum of Lights を書き出す (安全重視版)
+// これまでの「年ごとにまとめて処理」はメモリ不足になったり、
+// 効率化しようとした版は逆に暴走して無料枠を大量消費したため、
+// 一番シンプルで軽い「1ヶ月 = 1タスク」に戻す。
+//
 // 使い方:
 //   1. この内容を Earth Engine Code Editor に全部貼って Run
+//      (少し時間がかかります。Console に「タスク数: 150」のように出ます)
 //   2. 右の Tasks タブで「RUN ALL」を押す
-//      -> viirs_sol_2012 ... viirs_sol_2024 が
-//         Google ドライブの earthengine フォルダに出ます
-//   3. 全 CSV をダウンロードして scripts/ フォルダに置く
-//   4. python scripts/build_data.py scripts/
-//
-// 前バージョンは月ごとに国・大陸の図形を毎回処理してメモリ不足になったため、
-// 国用・大陸用の「地域IDマップ画像」を先に1回だけ作り、月ごとはそれを
-// 読むだけにして負荷を大きく下げている。
+//      -> viirs_sol_2012_04, viirs_sol_2012_05, ... という
+//         月別 CSV が Google ドライブの earthengine フォルダに出ます
+//      (タスクが多いので終わるまで時間がかかりますが、1つ1つは軽いです)
+//   3. Google ドライブで earthengine フォルダを開き、中身を全選択して
+//      右クリック→ダウンロード（ZIPでまとめて落ちます）。展開する。
+//   4. 展開したフォルダの CSV を scripts/ に置き、
+//      python scripts/build_data.py scripts/
 
-var START_YEAR = 2012;
-var END_YEAR = 2024;    // データがある最後の年。新しい月が増えたら +1
-var SCALE = 2000;       // 国・大陸の集計解像度(m)。OOM が出たら 3000 に上げる
-var SCALE_WORLD = 4000; // 地球全体は総量だけなので粗くてよい
+var START = '2012-04-01';
+var END = ee.Date(Date.now()).format('YYYY-MM-dd').getInfo();
+var SCALE = 1000;
 var MIN_RAD = 0.0;
 var DRIVE_FOLDER = 'earthengine';
 
-var col = ee.ImageCollection('NOAA/VIIRS/DNB/MONTHLY_V1/VCMSLCFG');
+var col = ee.ImageCollection('NOAA/VIIRS/DNB/MONTHLY_V1/VCMSLCFG')
+  .filterDate(START, END);
 
 function clean(img) {
   var rad = img.select('avg_rad');
   var cvg = img.select('cf_cvg');
-  var m = rad.updateMask(cvg.gt(0)).updateMask(rad.gt(MIN_RAD));
-  return m.rename('avg_rad').set('ym', img.date().format('YYYY-MM'));
+  return rad.updateMask(cvg.gt(0)).updateMask(rad.gt(MIN_RAD)).rename('avg_rad');
 }
 
 var lsib = ee.FeatureCollection('USDOS/LSIB_SIMPLE/2017');
@@ -49,92 +52,50 @@ continents['North America'] = ['North America', 'Central America', 'Caribbean'];
 continents['South America'] = ['South America'];
 continents['Oceania'] = ['Oceania', 'Australia'];
 
-var worldGeom = ee.Geometry.BBox(-180, -65, 180, 75);
+var feats = [];
+feats.push(ee.Feature(ee.Geometry.BBox(-180, -65, 180, 75),
+                      {region: 'World', rtype: 'world'}));
 
-// ---- 地域IDマップ画像を1回だけ作る -------------------------------
-var countryLabels = Object.keys(countries);
-var countryFeats = countryLabels.map(function (label, i) {
+Object.keys(countries).forEach(function (label) {
   var g = lsib.filter(ee.Filter.eq('country_na', countries[label])).geometry();
-  return ee.Feature(g.simplify(SCALE), {code: i + 1});
+  feats.push(ee.Feature(g.simplify(SCALE), {region: label, rtype: 'country'}));
 });
-var countryImg = ee.Image(0).byte()
-  .paint(ee.FeatureCollection(countryFeats), 'code')
-  .rename('zone');
 
-var contLabels = Object.keys(continents);
-var contFeats = contLabels.map(function (label, i) {
+Object.keys(continents).forEach(function (label) {
   var g = lsib.filter(ee.Filter.inList('wld_rgn', continents[label])).geometry();
-  return ee.Feature(g.simplify(SCALE), {code: i + 1});
+  feats.push(ee.Feature(g.simplify(SCALE), {region: label, rtype: 'continent'}));
 });
-var contImg = ee.Image(0).byte()
-  .paint(ee.FeatureCollection(contFeats), 'code')
-  .rename('zone');
 
-// ---- 1画像・1地域IDマップぶんの集計 -------------------------------
-function groupRows(img, zoneImg, labels, ym, rtype) {
-  var combo = img.addBands(zoneImg);
-  var out = combo.reduceRegion({
-    reducer: ee.Reducer.sum().group({groupField: 1, groupName: 'code'}),
-    geometry: worldGeom,
+var regions = ee.FeatureCollection(feats);
+
+// 月ごとの画像IDを先に一覧化 (クライアント側で151個ほどのリストを作るだけ)
+var ids = col.aggregate_array('system:index').getInfo();
+print('タスク数: ' + ids.length);
+
+ids.forEach(function (id) {
+  var ym = id.slice(0, 4) + '-' + id.slice(4, 6);
+  var img = clean(ee.Image(col.filter(ee.Filter.eq('system:index', id)).first()));
+
+  var fc = img.reduceRegions({
+    collection: regions,
+    reducer: ee.Reducer.sum().setOutputs(['sol']),
     scale: SCALE,
-    maxPixels: 1e13,
-    tileScale: 16,
-    bestEffort: true
+    tileScale: 16
   });
-  var groups = ee.List(out.get('groups'));
-  var feats = groups.map(function (g) {
-    g = ee.Dictionary(g);
-    var code = ee.Number(g.get('code'));
-    var label = ee.Algorithms.If(
-      code.eq(0), null, ee.List(labels).get(code.subtract(1))
-    );
+  fc = fc.map(function (f) {
     return ee.Feature(null, {
       month: ym,
-      region: label,
-      rtype: rtype,
-      sol: g.get('sum')
+      region: f.get('region'),
+      rtype: f.get('rtype'),
+      sol: f.get('sol')
     });
   });
-  return ee.FeatureCollection(feats).filter(ee.Filter.notNull(['region']));
-}
-
-function worldRow(img, ym) {
-  var val = img.reduceRegion({
-    reducer: ee.Reducer.sum(),
-    geometry: worldGeom,
-    scale: SCALE_WORLD,
-    maxPixels: 1e13,
-    tileScale: 16,
-    bestEffort: true
-  }).get('avg_rad');
-  return ee.Feature(null, {month: ym, region: 'World', rtype: 'world', sol: val});
-}
-
-// ---- 年ごとにエクスポート ----------------------------------------
-function exportYear(year) {
-  var start = ee.Date.fromYMD(year, 1, 1);
-  var end = start.advance(1, 'year');
-  var yc = col.filterDate(start, end).map(clean);
-
-  var rows = yc.map(function (img) {
-    var ym = img.get('ym');
-    var c1 = groupRows(img, countryImg, countryLabels, ym, 'country');
-    var c2 = groupRows(img, contImg, contLabels, ym, 'continent');
-    var w = ee.FeatureCollection([worldRow(img, ym)]);
-    return c1.merge(c2).merge(w);
-  }).flatten();
 
   Export.table.toDrive({
-    collection: rows,
-    description: 'viirs_sol_' + year,
+    collection: fc,
+    description: 'viirs_sol_' + ym.replace('-', '_'),
     folder: DRIVE_FOLDER,
     fileFormat: 'CSV',
     selectors: ['month', 'region', 'rtype', 'sol']
   });
-}
-
-for (var y = START_YEAR; y <= END_YEAR; y++) {
-  exportYear(y);
-}
-
-print('タスクを ' + (END_YEAR - START_YEAR + 1) + ' 個作りました。Tasks タブで RUN ALL を押してください。');
+});
