@@ -1,4 +1,4 @@
-// VIIRS 夜間光 - 年ごとに分割して月次 Sum of Lights を書き出す
+// VIIRS 夜間光 - 年ごとに分割して月次 Sum of Lights を書き出す (効率化版)
 // 使い方:
 //   1. この内容を Earth Engine Code Editor に全部貼って Run
 //   2. 右の Tasks タブで「RUN ALL」を押す
@@ -6,10 +6,15 @@
 //         Google ドライブの earthengine フォルダに出ます
 //   3. 全 CSV をダウンロードして scripts/ フォルダに置く
 //   4. python scripts/build_data.py scripts/
+//
+// 前バージョンは月ごとに国・大陸の図形を毎回処理してメモリ不足になったため、
+// 国用・大陸用の「地域IDマップ画像」を先に1回だけ作り、月ごとはそれを
+// 読むだけにして負荷を大きく下げている。
 
 var START_YEAR = 2012;
-var END_YEAR = 2024;   // データがある最後の年。新しい月が増えたら +1
-var SCALE = 1000;      // 集計解像度(m)。OOM が出たら 2000 に上げる
+var END_YEAR = 2024;    // データがある最後の年。新しい月が増えたら +1
+var SCALE = 2000;       // 国・大陸の集計解像度(m)。OOM が出たら 3000 に上げる
+var SCALE_WORLD = 4000; // 地球全体は総量だけなので粗くてよい
 var MIN_RAD = 0.0;
 var DRIVE_FOLDER = 'earthengine';
 
@@ -44,24 +49,68 @@ continents['North America'] = ['North America', 'Central America', 'Caribbean'];
 continents['South America'] = ['South America'];
 continents['Oceania'] = ['Oceania', 'Australia'];
 
-var feats = [];
-feats.push(ee.Feature(ee.Geometry.BBox(-180, -65, 180, 75),
-                      {region: 'World', rtype: 'world'}));
+var worldGeom = ee.Geometry.BBox(-180, -65, 180, 75);
 
-Object.keys(countries).forEach(function (label) {
-  var g = lsib.filter(ee.Filter.eq('country_na', countries[label]));
-  feats.push(ee.Feature(g.geometry().simplify(SCALE),
-                        {region: label, rtype: 'country'}));
+// ---- 地域IDマップ画像を1回だけ作る -------------------------------
+var countryLabels = Object.keys(countries);
+var countryFeats = countryLabels.map(function (label, i) {
+  var g = lsib.filter(ee.Filter.eq('country_na', countries[label])).geometry();
+  return ee.Feature(g.simplify(SCALE), {code: i + 1});
 });
+var countryImg = ee.Image(0).byte()
+  .paint(ee.FeatureCollection(countryFeats), 'code')
+  .rename('zone');
 
-Object.keys(continents).forEach(function (label) {
-  var g = lsib.filter(ee.Filter.inList('wld_rgn', continents[label]));
-  feats.push(ee.Feature(g.geometry().simplify(SCALE),
-                        {region: label, rtype: 'continent'}));
+var contLabels = Object.keys(continents);
+var contFeats = contLabels.map(function (label, i) {
+  var g = lsib.filter(ee.Filter.inList('wld_rgn', continents[label])).geometry();
+  return ee.Feature(g.simplify(SCALE), {code: i + 1});
 });
+var contImg = ee.Image(0).byte()
+  .paint(ee.FeatureCollection(contFeats), 'code')
+  .rename('zone');
 
-var regions = ee.FeatureCollection(feats);
+// ---- 1画像・1地域IDマップぶんの集計 -------------------------------
+function groupRows(img, zoneImg, labels, ym, rtype) {
+  var combo = img.addBands(zoneImg);
+  var out = combo.reduceRegion({
+    reducer: ee.Reducer.sum().group({groupField: 1, groupName: 'code'}),
+    geometry: worldGeom,
+    scale: SCALE,
+    maxPixels: 1e13,
+    tileScale: 16,
+    bestEffort: true
+  });
+  var groups = ee.List(out.get('groups'));
+  var feats = groups.map(function (g) {
+    g = ee.Dictionary(g);
+    var code = ee.Number(g.get('code'));
+    var label = ee.Algorithms.If(
+      code.eq(0), null, ee.List(labels).get(code.subtract(1))
+    );
+    return ee.Feature(null, {
+      month: ym,
+      region: label,
+      rtype: rtype,
+      sol: g.get('sum')
+    });
+  });
+  return ee.FeatureCollection(feats).filter(ee.Filter.notNull(['region']));
+}
 
+function worldRow(img, ym) {
+  var val = img.reduceRegion({
+    reducer: ee.Reducer.sum(),
+    geometry: worldGeom,
+    scale: SCALE_WORLD,
+    maxPixels: 1e13,
+    tileScale: 16,
+    bestEffort: true
+  }).get('avg_rad');
+  return ee.Feature(null, {month: ym, region: 'World', rtype: 'world', sol: val});
+}
+
+// ---- 年ごとにエクスポート ----------------------------------------
 function exportYear(year) {
   var start = ee.Date.fromYMD(year, 1, 1);
   var end = start.advance(1, 'year');
@@ -69,20 +118,10 @@ function exportYear(year) {
 
   var rows = yc.map(function (img) {
     var ym = img.get('ym');
-    var fc = img.reduceRegions({
-      collection: regions,
-      reducer: ee.Reducer.sum().setOutputs(['sol']),
-      scale: SCALE,
-      tileScale: 16
-    });
-    return fc.map(function (f) {
-      return ee.Feature(null, {
-        month: ym,
-        region: f.get('region'),
-        rtype: f.get('rtype'),
-        sol: f.get('sol')
-      });
-    });
+    var c1 = groupRows(img, countryImg, countryLabels, ym, 'country');
+    var c2 = groupRows(img, contImg, contLabels, ym, 'continent');
+    var w = ee.FeatureCollection([worldRow(img, ym)]);
+    return c1.merge(c2).merge(w);
   }).flatten();
 
   Export.table.toDrive({
