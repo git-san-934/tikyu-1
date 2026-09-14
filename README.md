@@ -30,18 +30,36 @@ python -m http.server 8000
 
 ## 実データを作る（無料・毎月手動）
 
+国・大陸別の月次集計（`gee_export.js`）は月ごとに Tasks タブでタスクを Run する必要があり、
+詰まりやすい。まずは軽量版でとにかく実データを表示させたい場合は、下の
+「まず地球全体だけ・年次で試す」を先にやるとよい。
+
+### まず地球全体だけ・年次で試す（推奨・軽量）
+
 1. [Google Earth Engine](https://code.earthengine.google.com/) に無料登録（非商用）。
-2. `scripts/gee_export.js` の中身を Earth Engine の Code Editor に貼り付けて **Run**。
-3. 右の **Tasks** タブで `viirs_sol_monthly` を **Run**（数分〜十数分）。Google ドライブ直下に `viirs_sol_monthly.csv` が出る。
-   - `viirs_region_check` は地域定義の確認用（任意）。
-   - World がタイムアウトする場合は `gee_export.js` の `SCALE` を `1000` に上げる。
+2. `scripts/gee_export_world_annual.js` の中身を Code Editor に貼り付けて **Run**。
+3. **Tasks** タブに `viirs_sol_world_annual` が1つだけ出るので **Run**（数分で完了）。
+   Google ドライブの `earthengine` フォルダに CSV が出る。
 4. CSV を `scripts/` に置いて変換：
    ```bash
-   python scripts/build_data.py scripts/viirs_sol_monthly.csv
+   python scripts/build_data.py scripts/viirs_sol_world_annual.csv
    ```
-5. `data/nightlights.json` が更新される。コミットして push すれば公開サイトに反映。
+5. `data/nightlights.json` に World（地球全体）の年次データだけが入る（年央=6月に1点、粗い解像度）。
+   コミットして push すれば公開サイトに反映。国・大陸別データは後から追加すればよい。
 
-毎月、2〜5 を繰り返せば最新化できる。
+### 国・大陸別の月次データも作る（フル版）
+
+1. `scripts/gee_export.js` の中身を Earth Engine の Code Editor に貼り付けて **Run**。
+2. 右の **Tasks** タブで各月のタスクを **Run**（数分〜十数分／月）。Google ドライブ直下に
+   `viirs_sol_YYYY_MM.csv` が月ごとに出る。
+   - `viirs_region_check` は地域定義の確認用（任意）。
+3. CSV を `scripts/` に置いて変換：
+   ```bash
+   python scripts/build_data.py scripts/
+   ```
+4. `data/nightlights.json` が更新される。コミットして push すれば公開サイトに反映。
+
+毎月、上記を繰り返せば最新化できる。
 
 ## デプロイ（GitHub Pages）
 

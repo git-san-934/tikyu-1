@@ -223,17 +223,23 @@ function update() {
   const { months, rows, yMode } = buildSeries();
   const pct = isPercentMode(yMode);
 
-  const datasets = rows.map((r) => ({
-    label: r.label,
-    data: r.values,
-    borderColor: r.color,
-    backgroundColor: r.color,
-    borderWidth: 2,
-    pointRadius: 0,
-    pointHoverRadius: 4,
-    tension: 0.15,
-    spanGaps: false,
-  }));
+  const datasets = rows.map((r) => {
+    // 年次データなど値がまばらな系列は、点を打って欠測をまたいで線を引かないと
+    // 何も表示されなくなるため、密度に応じて見せ方を変える。
+    const filled = r.values.filter((v) => v != null).length;
+    const sparse = r.values.length > 0 && filled / r.values.length < 0.5;
+    return {
+      label: r.label,
+      data: r.values,
+      borderColor: r.color,
+      backgroundColor: r.color,
+      borderWidth: 2,
+      pointRadius: sparse ? 3 : 0,
+      pointHoverRadius: sparse ? 5 : 4,
+      tension: 0.15,
+      spanGaps: sparse,
+    };
+  });
 
   const cfg = {
     type: "line",
