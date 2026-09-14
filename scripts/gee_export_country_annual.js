@@ -11,9 +11,9 @@
 //   5. python scripts/build_data.py scripts/          ← フォルダ指定なら
 //      これまでの CSV（World分など）とまとめて data/nightlights.json に反映される
 
-var COUNTRY = 'Japan';        // USDOS/LSIB_SIMPLE/2017 の country_na に合わせる
-var REGION_LABEL = 'Japan';   // region 列の値。build_data.py の LABELS に対応させる
-var EXPORT_NAME = 'viirs_sol_japan_annual';
+var COUNTRY = 'Korea, South';       // USDOS/LSIB_SIMPLE/2017 の country_na 表記（韓国はこの形）
+var REGION_LABEL = 'South Korea';   // region 列の値。build_data.py の LABELS に対応させる
+var EXPORT_NAME = 'viirs_sol_south_korea_annual';
 
 var START_YEAR = 2012;
 var END_YEAR = ee.Date(Date.now()).get('year').getInfo();
