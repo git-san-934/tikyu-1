@@ -16,6 +16,7 @@ const state = {
   selected: new Set(),
   colors: new Map(),
   chart: null,
+  chartYoy: null,
 };
 
 const el = (id) => document.getElementById(id);
@@ -170,12 +171,17 @@ function pctChange(values, lag) {
   });
 }
 
-function buildSeries() {
+function visibleRange() {
   const d = state.data;
   const startYear = el("start-year").value;
   const startIdx = d.months.findIndex((m) => m.slice(0, 4) >= startYear);
   const from = startIdx < 0 ? 0 : startIdx;
-  const months = d.months.slice(from);
+  return { months: d.months.slice(from), from };
+}
+
+function buildSeries() {
+  const d = state.data;
+  const { months, from } = visibleRange();
 
   const yMode = el("y-mode").value;
   const smoothing = el("smoothing").value;
@@ -201,6 +207,27 @@ function buildSeries() {
   return { months, rows, yMode };
 }
 
+// 縦軸の設定に関わらず常に「前年伸び率」を表示する、専用の2枚目グラフ用データ。
+// 国・大陸ごとの規模差が大きくても伸び率なら比較しやすいため常設にしている。
+function buildYoySeries() {
+  const d = state.data;
+  const { months, from } = visibleRange();
+
+  const rows = [];
+  for (const key of Object.keys(d.regions)) {
+    if (!state.selected.has(key)) continue;
+    const r = d.regions[key];
+    const values = pctChange(r.values, 12).slice(from);
+    rows.push({
+      key,
+      label: r.label_ja || key,
+      color: state.colors.get(key),
+      values,
+    });
+  }
+  return { months, rows };
+}
+
 function yAxisTitle(yMode) {
   return (
     {
@@ -218,12 +245,8 @@ function isPercentMode(yMode) {
 
 /* ---- 描画 ---- */
 
-function update() {
-  syncCheckboxes();
-  const { months, rows, yMode } = buildSeries();
-  const pct = isPercentMode(yMode);
-
-  const datasets = rows.map((r) => {
+function makeDatasets(rows) {
+  return rows.map((r) => {
     // 年次データなど値がまばらな系列は、点を打って欠測をまたいで線を引かないと
     // 何も表示されなくなるため、密度に応じて見せ方を変える。
     const filled = r.values.filter((v) => v != null).length;
@@ -240,7 +263,9 @@ function update() {
       spanGaps: sparse,
     };
   });
+}
 
+function renderChart(prevChart, canvasEl, months, datasets, yTitle, pct, isLog, tooltipMode) {
   const cfg = {
     type: "line",
     data: { labels: months, datasets },
@@ -253,7 +278,7 @@ function update() {
         tooltip: {
           callbacks: {
             label: (c) =>
-              `${c.dataset.label}: ${fmtVal(c.parsed.y, yMode)}`,
+              `${c.dataset.label}: ${fmtVal(c.parsed.y, tooltipMode)}`,
           },
         },
       },
@@ -263,8 +288,8 @@ function update() {
           grid: { display: false },
         },
         y: {
-          type: yMode === "log" ? "logarithmic" : "linear",
-          title: { display: true, text: yAxisTitle(yMode) },
+          type: isLog ? "logarithmic" : "linear",
+          title: { display: true, text: yTitle },
           grid: {
             color: (ctx) =>
               pct && ctx.tick.value === 0
@@ -279,14 +304,42 @@ function update() {
     },
   };
 
-  if (state.chart) {
-    state.chart.config.type = cfg.type;
-    state.chart.data = cfg.data;
-    state.chart.options = cfg.options;
-    state.chart.update();
-  } else {
-    state.chart = new Chart(el("chart"), cfg);
+  if (prevChart) {
+    prevChart.config.type = cfg.type;
+    prevChart.data = cfg.data;
+    prevChart.options = cfg.options;
+    prevChart.update();
+    return prevChart;
   }
+  return new Chart(canvasEl, cfg);
+}
+
+function update() {
+  syncCheckboxes();
+  const { months, rows, yMode } = buildSeries();
+  const pct = isPercentMode(yMode);
+  state.chart = renderChart(
+    state.chart,
+    el("chart"),
+    months,
+    makeDatasets(rows),
+    yAxisTitle(yMode),
+    pct,
+    yMode === "log",
+    yMode
+  );
+
+  const yoy = buildYoySeries();
+  state.chartYoy = renderChart(
+    state.chartYoy,
+    el("chart-yoy"),
+    yoy.months,
+    makeDatasets(yoy.rows),
+    "前年伸び率（%）",
+    true,
+    false,
+    "yoy"
+  );
 
   renderMetricNote(yMode);
   renderTable(months, rows, yMode);

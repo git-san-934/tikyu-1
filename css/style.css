@@ -121,6 +121,7 @@ main.wrap { padding-block: 20px 48px; }
 
 .chart-panel { padding-bottom: 10px; }
 .chart-container { position: relative; height: 420px; }
+.chart-container-sm { height: 260px; }
 .metric-note { margin: 6px 2px 2px; font-size: .82rem; color: var(--muted); }
 
 .table-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
@@ -155,4 +156,5 @@ code {
 
 @media (max-width: 480px) {
   .chart-container { height: 280px; }
+  .chart-container-sm { height: 220px; }
 }
