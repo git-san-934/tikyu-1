@@ -11,15 +11,13 @@
 //   5. python scripts/build_data.py scripts/          ← フォルダ指定なら
 //      これまでの CSV（World分など）とまとめて data/nightlights.json に反映される
 
-var COUNTRY = 'Canada';        // USDOS/LSIB_SIMPLE/2017 の country_na に合わせる
-var REGION_LABEL = 'Canada';   // region 列の値。build_data.py の LABELS に対応させる
-var EXPORT_NAME = 'viirs_sol_canada_annual';
+var COUNTRY = 'Australia';        // USDOS/LSIB_SIMPLE/2017 の country_na に合わせる
+var REGION_LABEL = 'Australia';   // region 列の値。build_data.py の LABELS に対応させる
+var EXPORT_NAME = 'viirs_sol_australia_annual';
 
 var START_YEAR = 2012;
 var END_YEAR = ee.Date(Date.now()).get('year').getInfo();
-// カナダは海岸線・北極圏の島が非常に複雑で、simplify後も頂点数が多く重くなるため、
-// 他の国より粗い解像度にしている（それでも年次の総量比較には十分）。
-var SCALE = 8000;
+var SCALE = 2000; // 国単位・年次の総量だけなので粗くてよい
 var MIN_RAD = 0.0;
 var DRIVE_FOLDER = 'earthengine';
 
