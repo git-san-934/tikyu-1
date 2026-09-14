@@ -28,6 +28,8 @@ LABELS = {
     "India": "インド",
     "South Korea": "韓国",
     "Taiwan": "台湾",
+    "Canada": "カナダ",
+    "Australia": "オーストラリア",
     "Asia": "アジア",
     "Europe": "ヨーロッパ",
     "Africa": "アフリカ",
