@@ -43,7 +43,6 @@ REGIONS = [
 
 CHECK_MONTHS_BACK = 6  # 公開ラグを見込んで、直近何ヶ月分を毎回チェックするか
 MIN_RAD = 0.0
-WORLD_GEOM = ee.Geometry.BBox(-180, -65, 180, 75)
 
 
 def init_ee() -> None:
@@ -113,13 +112,14 @@ def candidate_months(n_back: int) -> list[tuple[int, int]]:
 
 def main() -> int:
     init_ee()
+    world_geom = ee.Geometry.BBox(-180, -65, 180, 75)
     col = ee.ImageCollection("NOAA/VIIRS/DNB/MONTHLY_V1/VCMSLCFG")
     rows = load_raw()
     months = candidate_months(CHECK_MONTHS_BACK)
 
     added = 0
     for r in REGIONS:
-        geom = country_geom(r["country_na"], r["scale"]) if r["country_na"] else WORLD_GEOM
+        geom = country_geom(r["country_na"], r["scale"]) if r["country_na"] else world_geom
         for year, month in months:
             month_str = f"{year:04d}-{month:02d}"
             key = (r["label"], month_str)
