@@ -63,13 +63,31 @@ def country_geom(country_na: str, scale: int):
     return lsib.filter(ee.Filter.eq("country_na", country_na)).geometry().simplify(scale)
 
 
+MIN_COVERAGE = 0.3  # 領域内でこの割合以上、有効な観測(cf_cvg>0)が無い月は欠測扱いにする
+
+
 def month_value(col, geom, scale: int, year: int, month: int):
     start = ee.Date.fromYMD(year, month, 1)
     end = start.advance(1, "month")
     imgs = col.filterDate(start, end)
     if imgs.size().getInfo() == 0:
         return None
-    img = clean(ee.Image(imgs.first()))
+    raw_img = ee.Image(imgs.first())
+
+    # 雲などでその月ほぼ全域が観測できていない場合、残ったごく僅かな領域だけを
+    # 合計してしまい、実態とかけ離れた極端に小さい値になることがある
+    # （台湾2022-07で確認済み）。有効画素の面積比が低すぎる月は欠測(null)にする。
+    coverage = (
+        raw_img.select("cf_cvg")
+        .gt(0)
+        .reduceRegion(reducer=ee.Reducer.mean(), geometry=geom, scale=scale, maxPixels=1e13, tileScale=16)
+        .get("cf_cvg")
+        .getInfo()
+    )
+    if coverage is None or coverage < MIN_COVERAGE:
+        return None
+
+    img = clean(raw_img)
     val = img.reduceRegion(
         reducer=ee.Reducer.sum(),
         geometry=geom,

@@ -15,7 +15,7 @@
 //
 // 国を追加・削除したい場合は下の REGIONS 配列を編集する。
 
-var MONTHS = [6, 12]; // 取得する月（6月・12月）
+var MONTHS = [5, 11]; // 取得する月（5月・11月）
 var START_YEAR = 2012;
 var END_YEAR = ee.Date(Date.now()).get('year').getInfo();
 var MIN_RAD = 0.0;
@@ -54,6 +54,8 @@ var WORLD_GEOM = ee.Geometry.BBox(-180, -65, 180, 75);
 var years = [];
 for (var y = START_YEAR; y <= END_YEAR; y++) years.push(y);
 
+var MIN_COVERAGE = 0.3; // 領域内でこの割合以上、有効な観測(cf_cvg>0)が無い月は欠測扱いにする
+
 function monthValue(geom, scale, year, month) {
   var start = ee.Date.fromYMD(year, month, 1);
   var end = start.advance(1, 'month');
@@ -61,13 +63,31 @@ function monthValue(geom, scale, year, month) {
   // その年月の画像がまだ無い場合（未来・データ未公開など）は null にする。
   return ee.Algorithms.If(
     imgs.size().gt(0),
-    clean(ee.Image(imgs.first())).reduceRegion({
-      reducer: ee.Reducer.sum(),
-      geometry: geom,
-      scale: scale,
-      maxPixels: 1e13,
-      tileScale: 16
-    }).get('avg_rad'),
+    (function () {
+      var img = ee.Image(imgs.first());
+      // 雲などでその月ほぼ全域が観測できていない場合、残ったごく僅かな領域だけを
+      // 合計してしまい、実態とかけ離れた極端に小さい値になることがある
+      // （台湾2022-07で確認済み）。有効画素の面積比が低すぎる月は欠測(null)にする。
+      var coverage = img.select('cf_cvg').gt(0).reduceRegion({
+        reducer: ee.Reducer.mean(),
+        geometry: geom,
+        scale: scale,
+        maxPixels: 1e13,
+        tileScale: 16
+      }).get('cf_cvg');
+      var covNum = ee.Number(ee.Algorithms.If(coverage, coverage, 0));
+      return ee.Algorithms.If(
+        covNum.gte(MIN_COVERAGE),
+        clean(img).reduceRegion({
+          reducer: ee.Reducer.sum(),
+          geometry: geom,
+          scale: scale,
+          maxPixels: 1e13,
+          tileScale: 16
+        }).get('avg_rad'),
+        null
+      );
+    })(),
     null
   );
 }
