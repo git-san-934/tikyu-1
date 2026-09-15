@@ -1,2 +1,4 @@
 # GEE からダウンロードした生 CSV（変換後は不要。残したい場合はこの行を消す）
 scripts/*.csv
+__pycache__/
+*.pyc

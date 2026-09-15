@@ -2,22 +2,36 @@
 
 VIIRS 衛星（NOAA/NASA）が観測した夜間光（夜の明るさ）を、国・地域ごとに **月単位** でグラフ化する静的 Web アプリ。GitHub Pages で無料公開できる。
 
-- **対象地域**：地球全体 / 日本・米国・中国・インド・韓国・台湾 / アジア・ヨーロッパ・アフリカ・北アメリカ・南アメリカ・オセアニア（大陸は標準区分でまとめる）
+- **対象地域**：地球全体 / 日本・米国・中国・インド・韓国・台湾・カナダ・オーストラリア
 - **指標**：Sum of Lights（範囲内の放射輝度の合計）
-- **期間**：2012年4月〜（VIIRS 月次データの開始）
-- **データ**：`data/nightlights.json` に同梱（サイトは静的、サーバー不要）
+- **期間**：2014年1月〜（使用データセットの実質的な開始）、月単位（全12ヶ月）
+- **データ**：`data/nightlights.json` に同梱（サイトは静的、サーバー不要）。毎月 GitHub Actions が自動更新
 
 ## 構成
 
 ```
-index.html            画面
+index.html                      画面
 css/style.css
-js/app.js              グラフ描画（Chart.js は CDN 読み込み）
-data/nightlights.json  表示データ（生成物）
-scripts/gee_export.js  Google Earth Engine 用スクリプト（データ集計）
-scripts/build_data.py  GEE の CSV → nightlights.json
-scripts/make_sample.py 表示確認用のサンプル（架空）データ生成
+js/app.js                       グラフ描画（Chart.js は CDN 読み込み）
+data/nightlights.json           表示データ（生成物）
+data/raw/nightlights_raw.csv    生データ台帳（month,region,rtype,sol の蓄積、自動更新もここに追記）
+scripts/build_data.py           生データCSV → nightlights.json
+scripts/update_from_gee.py      Earth Engineから新しい月だけ取得してraw CSVに追記（GitHub Actionsから実行）
+scripts/gee_export_all_biannual.js  手動でまとめて取得したいときのEarth Engineスクリプト
+scripts/make_sample.py          表示確認用のサンプル（架空）データ生成
+.github/workflows/update-nightlights.yml  毎月自動更新するワークフロー
 ```
+
+## 自動更新の仕組み
+
+毎月5日（UTC 03:00 / 日本時間12:00）に GitHub Actions が自動実行され、
+Earth Engine サービスアカウントで新しく公開された月のデータだけを取得し、
+`data/raw/nightlights_raw.csv` に追記 → `data/nightlights.json` を再生成 →
+変更があればコミット・pushする。手動での更新作業は基本的に不要。
+
+- ワークフロー: `.github/workflows/update-nightlights.yml`
+- 認証: リポジトリの Secret `GEE_SERVICE_ACCOUNT_KEY`（サービスアカウントのJSON鍵）
+- 手動で今すぐ動かしたい場合は GitHub の Actions タブ → 「Update nightlights data」→ 「Run workflow」
 
 ## ローカルで見る
 
@@ -28,7 +42,10 @@ python -m http.server 8000
 
 初期状態ではサンプル（架空）データが入っている。画面上部に警告バナーが出る。
 
-## 実データを作る（無料・手動）
+## 手動でデータを取得したいとき（バックフィル・トラブル時）
+
+通常は上記の自動更新で足りるはずだが、初期構築時や自動更新が失敗したときのために
+手動での取得方法も残してある。
 
 ### World + 登録済みの国ぶんを6月・12月でまとめて取る（推奨）
 
@@ -41,11 +58,12 @@ python -m http.server 8000
 2. `scripts/gee_export_all_biannual.js` の中身を Code Editor に貼り付けて **Run**。
 3. **Tasks** タブに `viirs_sol_all_biannual` が1個だけ出るので **Run**（完了まで待つ）。
 4. Google ドライブの `earthengine` フォルダに落ちる CSV を `scripts/` に置く。
-5. 変換：
+5. 生データ台帳にマージしてから変換：
    ```bash
-   python scripts/build_data.py scripts/viirs_sol_all_biannual.csv
+   python scripts/merge_raw.py scripts/viirs_sol_all_biannual.csv
+   python scripts/build_data.py data/raw/nightlights_raw.csv
    ```
-6. `data/nightlights.json` が更新される。コミットして push すれば公開サイトに反映。
+6. `data/raw/nightlights_raw.csv` と `data/nightlights.json` が更新される。コミットして push すれば公開サイトに反映。
 
 新しい月のデータを追加したいときは `gee_export_all_biannual.js` の `MONTHS` を
 書き換えて（例: `[6, 12]` → `[3, 6, 9, 12]`）同じ手順を繰り返せばよい。
@@ -58,20 +76,6 @@ python -m http.server 8000
 
 どちらも年1点（6月・年次平均）の軽量版。タスクは1個だけなので、まず動作確認したいときや、
 新しい国を1つだけ試したいときに使う。
-
-### 国・大陸別の月次データも作る（フル版・重い）
-
-1. `scripts/gee_export.js` の中身を Earth Engine の Code Editor に貼り付けて **Run**。
-2. 右の **Tasks** タブで各月のタスクを **Run**（数分〜十数分／月）。Google ドライブ直下に
-   `viirs_sol_YYYY_MM.csv` が月ごとに出る。
-   - `viirs_region_check` は地域定義の確認用（任意）。
-3. CSV を `scripts/` に置いて変換：
-   ```bash
-   python scripts/build_data.py scripts/
-   ```
-4. `data/nightlights.json` が更新される。コミットして push すれば公開サイトに反映。
-
-毎月、上記を繰り返せば最新化できる。
 
 ## デプロイ（GitHub Pages）
 

@@ -20,7 +20,7 @@
 
   <div id="sample-banner" class="banner banner-warn" hidden>
     ⚠️ いまはサンプル（架空）データを表示しています。実データの作り方は
-    <a href="#howto">下の手順</a> を参照してください。
+    <a href="https://github.com/git-san-934/tikyu-1#自動更新の仕組み">README</a> を参照してください。
   </div>
   <div id="load-error" class="banner banner-error" hidden></div>
 
@@ -100,16 +100,6 @@
     </ul>
   </section>
 
-  <section class="panel" id="howto">
-    <h2>実データの作り方（無料）</h2>
-    <ol>
-      <li><a href="https://code.earthengine.google.com/">Google Earth Engine</a> に無料登録（非商用）。</li>
-      <li><code>scripts/gee_export.js</code> の中身を Earth Engine の Code Editor に貼り付けて実行。</li>
-      <li>右側「Tasks」タブで <code>viirs_sol_monthly</code> を Run。数分〜十数分で Google ドライブに CSV が出力されます。</li>
-      <li>CSV をこのフォルダの <code>scripts/</code> に置き、<code>python scripts/build_data.py scripts/viirs_sol_monthly.csv</code> を実行。</li>
-      <li><code>data/nightlights.json</code> が更新されます。毎月この手順を繰り返せば最新化できます。</li>
-    </ol>
-  </section>
 
 </main>
 
